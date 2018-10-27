@@ -4,3 +4,4 @@ lib/
 lib64
 share/
 pip-selfcheck.json
+.idea/*

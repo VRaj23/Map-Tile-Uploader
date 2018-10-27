@@ -2,24 +2,17 @@ import sys
 import util_tile_uploader as util
 import api_util as api
 from zoom_level import ZoomLevel
+import resume_file as resume
 
+util.banner()
 api.test_api_connection()
+access_token = api.login()
+tile_directory = util.get_tile_directory()
+resume_file = resume.check_resume_file(tile_directory)
+#resume or start new (y/n) ?
 
-#login
-
-#get directory path
-tile_directory = util.get_path_from_arg(sys.argv)
-util.validate_tile_directory_path(tile_directory)
-
-#check for resume file
-
-#if resume file not found then get metadata-> map type, state, year, season
-'''
-kml = util.read_file_content(tile_directory+util.get_DOC_KML())
-print(kml)
-obj = untangle.parse(kml)
-print(obj.kml.Document.NetworkLink.Region.LatLonAltBox.north.cdata)
-'''
+#get state map_type crop season year
+selected_parameters = util.get_parameters()
 
 #zoom levels
 zoom_level_list = util.get_zoom_level_list(tile_directory)
@@ -32,3 +25,4 @@ for item in kml_file_tree:
     print(item)
 
 print(len(kml_file_tree))
+resume.write_resume_file(tile_directory,kml_file_tree)
