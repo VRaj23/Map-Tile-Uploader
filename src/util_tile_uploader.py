@@ -1,15 +1,19 @@
 import sys
 import os
+
 import untangle
-from zoom_level import ZoomLevel
-from kml_info import KmlInfo
-from parameters import SelectedParameters
+
+from models import ZoomLevel, KmlInfo, ParameterList, Parameters
+from enums import MapType
+import api_util as api
+
 
 def banner():
     print("")
     print("")
     print("***************************")
     print("Launching Map Tile Uploader")
+    print("Version: 1")
     print("***************************")
     print("")
     print("")
@@ -18,8 +22,11 @@ def end_program():
     print("END")
     sys.exit()
 
-def get_DOC_KML():
+def get_doc_kml():
     return "doc.kml";
+
+def get_tilemapresource():
+    return "tilemapresource.xml";
 
 def get_path_with_ending_slash(path):
     if path[-1] == "/":
@@ -33,14 +40,19 @@ def read_file_content(path):
     f.close()
     return content
 
-def check_doc_kml(list_of_files): #check tilemapresource.xml
-    found = False
+def check_files(list_of_files):
+    found_doc_kml = False
+    found_tilemapresource = False
     for file_name in list_of_files:
-        if file_name == get_DOC_KML():
-            found = True
-    if found == False:
-        print(get_DOC_KML()+" not found in given Map Tile folder \n")
-    return found
+        if file_name == get_doc_kml():
+            found_doc_kml = True
+        if file_name == get_tilemapresource():
+            found_tilemapresource = True
+    if found_doc_kml == False:
+        print(get_doc_kml()+" not found in given Map Tile folder \n")
+    if found_tilemapresource == False:
+        print(get_tilemapresource()+" not found in given Map Tile folder \n")
+    return found_doc_kml and found_tilemapresource
 
 def validate_tile_directory_path(path):
     try:
@@ -50,7 +62,7 @@ def validate_tile_directory_path(path):
         return None
     else:
         list_of_files = current_path[2]
-        if check_doc_kml(list_of_files):
+        if check_files(list_of_files):
             return path
         else:
             return None
@@ -121,18 +133,105 @@ def get_kml_file_tree(tile_directory, zoom_level_list):
 def get_year():
     year = input("Year : ")
     year = int(year)
-    if year >= 1970:
+    if year >= 1970 and year < 2030:
+        print('')
         return year
     else:
         print("Invalid Year value \n")
         return get_year()
 
-def get_crop_id():
-    return 0
+def print_list(input_list):
+    for item in input_list:
+        print(item)
 
-def get_parameters():
-    crop_id = get_crop_id()
-    year = get_year()
-    parameters = SelectedParameters(crop_id, year)
-    print(parameters)
+def get_selected_item_from_list(indexed_list, parameter_name):
+    selection = input("Select "+parameter_name+" Number : ")
+    selection = int(selection)#TODO should be number
+    if selection < 1 or selection > len(indexed_list):
+        print("Invalid Selection \n")
+        return get_selected_item_from_list(indexed_list, parameter_name)
+    else:
+        for item in indexed_list:
+            if item.index == selection:
+                print("\n\t"+item.name+" Selected\n\n")
+                return item
+        return None #raise exception
+
+def get_indexed_list(response, id_key, name_key):
+    indexed_list = []
+    index =  1
+    for obj in response:
+        indexed_list.append( ParameterList(index, int(obj[id_key]), obj[name_key].capitalize()) )
+        index = index + 1
+    return indexed_list
+
+def get_parameter(function, access_token, query_param, id_key, name_key, parameter_name):
+    response = function(access_token, query_param)
+    indexed_list = get_indexed_list(response, id_key, name_key)
+    print_list(indexed_list)
+    return get_selected_item_from_list(indexed_list, parameter_name)
+
+def get_map_type(): #TODO refactor
+    indexed_list = []
+    index = 1
+    for map in MapType:
+        indexed_list.append( ParameterList(index, index, map.name) )
+        index = index + 1
+    print_list(indexed_list)
+    selection = input("Select Map Type Number : ")
+    selection = int(selection)#TODO should be number
+    if selection < 1 or selection > len(indexed_list):
+        print("Invalid Selection \n")
+        return get_map_type(indexed_list)
+    else:
+        for item in indexed_list:
+            if item.index == selection:
+                print("\t"+item.name+" Selected\n")
+                return item.name
+
+def update_parameters_by_map_type(map_type, parameters, access_token, country_id):
+    if map_type == 'CropMap' or map_type == 'YieldMap':
+        year = get_year()
+        parameters.set_year(year)
+        season = get_parameter(api.get_seasons,access_token,country_id,"cropSeasonID","cropSeasonName","Season")
+        parameters.set_season(season)
+        crop = get_parameter(api.get_crops, access_token,None, "cropTypeID", "cropTypeName", "Crop")
+        parameters.set_crop(crop)
+    elif map_type == 'NDVI' or map_type == 'IDSI':
+        year = get_year()
+        parameters.set_year(year)
+        season = get_parameter(api.get_seasons,access_token,country_id,"cropSeasonID","cropSeasonName","Season")
+        parameters.set_season(season)
     return parameters
+
+def confirm_parameter_selection(parameters):
+    print("\nConfirm Selection:\n")
+    print("\n\tMap Type = "+parameters.map_type)
+    print("\n\tDistrict = "+parameters.district.name)
+    if parameters.year != None:
+        print("\n\tYear = "+str(parameters.year))
+    if parameters.season != None:
+        print("\n\tSeason = "+str(parameters.season.name))
+    if parameters.crop != None:
+        print("\n\tCrop = "+str(parameters.crop.name))
+    choice = input("Enter Y or N : ")
+    if choice == 'y' or choice == 'Y':
+        return True
+    elif choice == 'n' or choice == 'N':
+        return False
+    else:
+        print('\nInvalid Input')
+        return confirm_parameter_selection(parameters)
+
+def get_parameters(access_token):
+    map_type = get_map_type()
+    country_param = get_parameter(api.get_countries, access_token,None, "countryID", "countryName", "Country")
+    state_param = get_parameter(api.get_states,access_token,str(country_param.id),"stateID","stateName","State")
+    district_param = get_parameter(api.get_districts,access_token,str(state_param.id),"districtID","districtName","District")
+    parameters = Parameters(map_type, district_param)
+    parameters = update_parameters_by_map_type(map_type, parameters, access_token, str(country_param.id))
+    if confirm_parameter_selection(parameters):
+        return parameters
+    else:
+        print("\n\nRe-Enter Parameters")
+        return get_parameters(access_token)

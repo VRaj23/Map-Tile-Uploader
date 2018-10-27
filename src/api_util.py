@@ -1,5 +1,6 @@
 import requests
 import getpass
+
 import util_tile_uploader as util
 
 def get_api_base_url():
@@ -7,7 +8,7 @@ def get_api_base_url():
     #return "http://localhost:8222";
 
 def test_api_connection():
-    print("Checking connection to server...")
+    print("Checking connection to server "+get_api_base_url())
     try:
         response = requests.get(get_api_base_url()+"/")
     except:
@@ -43,11 +44,40 @@ def login():
             return response.json()["response"]["value"]
         elif response.status_code == 401:
             print("Incorrect email/password")
-            login()
+            return login()
         else:
             print("Connection Error in API response")
             print(response.json())
             util.end_program()
 
-def get_crops(access_token):
-    return None
+def get_header(access_token):
+    return {"Authorization": access_token}
+
+def get_response(access_token, api_sub_path):
+    try:
+        response = requests.get(get_api_base_url()+api_sub_path, headers=get_header(access_token))
+    except:
+        print("Connection Error")
+        test_api_connection()
+    else:
+        return response.json()["response"]
+
+def get_countries(access_token, query_param):
+    print('Fetching list of countries from server...')
+    return get_response(access_token, "/auth/analyst/v1/country/all")
+
+def get_states(access_token, query_param):
+    print('Fetching list of states from server...')
+    return get_response(access_token,"/auth/analyst/v1/states?countryID="+query_param)
+
+def get_districts(access_token, query_param):
+    print('Fetching list of districts from server...')
+    return get_response(access_token,"/auth/analyst/v1/districts?stateID="+query_param)
+
+def get_seasons(access_token, query_param):
+    print('Fetching list of seasons from server...')
+    return get_response(access_token,"/auth/analyst/v1/seasons?countryID="+query_param)
+
+def get_crops(access_token, query_param):
+    print('Fetching list of crops from server...')
+    return get_response(access_token,"/auth/analyst/v1/crops")
